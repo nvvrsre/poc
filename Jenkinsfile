@@ -6,6 +6,10 @@ pipeline {
     timestamps()
   }
 
+  environment {
+    REPORT_FILE = ""
+  }
+
   stages {
 
     stage('Checkout') {
@@ -68,15 +72,10 @@ pipeline {
 
               echo "Requesting Slack upload URL..."
 
-              JSON_PAYLOAD=$(printf '{
-                "filename": "%s",
-                "length": %s
-              }' "$FILE_NAME" "$FILE_SIZE")
-
               RESPONSE=$(curl -s -X POST https://slack.com/api/files.getUploadURLExternal \
                 -H "Authorization: Bearer $SLACK_TOKEN" \
                 -H "Content-Type: application/json; charset=utf-8" \
-                --data-binary "$JSON_PAYLOAD")
+                --data "$(printf '{\"filename\":\"%s\",\"length\":%s}' "$FILE_NAME" "$FILE_SIZE")")
 
               echo "$RESPONSE"
 
@@ -97,13 +96,7 @@ pipeline {
               curl -s -X POST https://slack.com/api/files.completeUploadExternal \
                 -H "Authorization: Bearer $SLACK_TOKEN" \
                 -H "Content-Type: application/json; charset=utf-8" \
-                --data-binary "$(printf '{
-                  "files": [{
-                    "id": "%s",
-                    "title": "k6 HTML Test Report"
-                  }],
-                  "channel_id": "%s"
-                }' "$FILE_ID" "$CHANNEL_ID")"
+                --data "$(printf '{\"files\":[{\"id\":\"%s\",\"title\":\"k6 HTML Test Report\"}],\"channel_id\":\"%s\"}' "$FILE_ID" "$CHANNEL_ID")"
             '''
           }
         }
@@ -115,7 +108,8 @@ pipeline {
 • Build: ${env.BUILD_NUMBER}
 • Jenkins Report Link: ${reportLink}
 
-ℹ️ The HTML report is uploaded above. Download it and open in a browser to see full colors & charts.
+📎 The HTML report is uploaded above.
+⬇️ Download it and open locally to see full colors & charts.
 """
         )
       }
