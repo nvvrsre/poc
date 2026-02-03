@@ -36,7 +36,6 @@ pipeline {
 
     always {
       script {
-        // Find latest HTML report
         def reportFile = sh(
           script: "ls -1 report_*.html 2>/dev/null | sort | tail -n 1 || true",
           returnStdout: true
@@ -45,8 +44,6 @@ pipeline {
         if (reportFile) {
           echo "Found report: ${reportFile}"
           env.REPORT_FILE = reportFile
-
-          // Archive report in Jenkins
           archiveArtifacts artifacts: reportFile, fingerprint: true
         } else {
           echo "No HTML report found"
@@ -60,7 +57,6 @@ pipeline {
           ? "${env.BUILD_URL}artifact/${env.REPORT_FILE}"
           : "No report generated"
 
-        // Upload HTML report to Slack using External Upload API
         if (env.REPORT_FILE) {
           withCredentials([string(credentialsId: 'slack-bot-token', variable: 'SLACK_TOKEN')]) {
             sh '''
@@ -72,13 +68,15 @@ pipeline {
 
               echo "Requesting Slack upload URL..."
 
+              JSON_PAYLOAD=$(printf '{
+                "filename": "%s",
+                "length": %s
+              }' "$FILE_NAME" "$FILE_SIZE")
+
               RESPONSE=$(curl -s -X POST https://slack.com/api/files.getUploadURLExternal \
                 -H "Authorization: Bearer $SLACK_TOKEN" \
-                -H "Content-Type: application/json" \
-                -d "{
-                  \\"filename\\": \\"$FILE_NAME\\",
-                  \\"length\\": $FILE_SIZE
-                }")
+                -H "Content-Type: application/json; charset=utf-8" \
+                --data-binary "$JSON_PAYLOAD")
 
               echo "$RESPONSE"
 
@@ -98,19 +96,18 @@ pipeline {
               echo "Completing Slack upload..."
               curl -s -X POST https://slack.com/api/files.completeUploadExternal \
                 -H "Authorization: Bearer $SLACK_TOKEN" \
-                -H "Content-Type: application/json" \
-                -d "{
-                  \\"files\\": [{
-                    \\"id\\": \\"$FILE_ID\\",
-                    \\"title\\": \\"k6 HTML Test Report\\"
+                -H "Content-Type: application/json; charset=utf-8" \
+                --data-binary "$(printf '{
+                  "files": [{
+                    "id": "%s",
+                    "title": "k6 HTML Test Report"
                   }],
-                  \\"channel_id\\": \\"$CHANNEL_ID\\"
-                }"
+                  "channel_id": "%s"
+                }' "$FILE_ID" "$CHANNEL_ID")"
             '''
           }
         }
 
-        // Slack summary message
         slackSend(
           channel: "#all-poc-k6",
           message: """✅ *k6 POC PASSED*
