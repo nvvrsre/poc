@@ -34,26 +34,28 @@ pipeline {
         '''
       }
     }
-  }
 
-  post {
+    stage('Collect Report') {
+      steps {
+        script {
+          def reportFile = sh(
+            script: "ls -1 report_*.html 2>/dev/null | sort | tail -n 1 || true",
+            returnStdout: true
+          ).trim()
 
-    always {
-      script {
-        def reportFile = sh(
-          script: "ls -1 report_*.html 2>/dev/null | sort | tail -n 1 || true",
-          returnStdout: true
-        ).trim()
-
-        if (reportFile) {
-          echo "Found report: ${reportFile}"
-          env.REPORT_FILE = reportFile
-          archiveArtifacts artifacts: reportFile, fingerprint: true
-        } else {
-          echo "No HTML report found"
+          if (reportFile) {
+            echo "Found report: ${reportFile}"
+            env.REPORT_FILE = reportFile
+            archiveArtifacts artifacts: reportFile, fingerprint: true
+          } else {
+            echo "No HTML report found"
+          }
         }
       }
     }
+  }
+
+  post {
 
     success {
       script {
