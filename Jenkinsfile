@@ -62,7 +62,7 @@ pipeline {
 
         // Upload HTML report to Slack using Web API (GUARANTEED)
         if (env.REPORT_FILE) {
-          withCredentials([string(credentialsId: 'SLACK_BOT_TOKEN', variable: 'SLACK_TOKEN')]) {
+          withCredentials([string(credentialsId: 'slack-bot-token', variable: 'SLACK_TOKEN')]) {
             sh """
               curl -s -X POST https://slack.com/api/files.upload \\
                 -H "Authorization: Bearer $SLACK_TOKEN" \\
