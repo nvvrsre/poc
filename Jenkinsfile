@@ -46,7 +46,7 @@ pipeline {
           echo "Found report: ${reportFile}"
           env.REPORT_FILE = reportFile
 
-          // Archive in Jenkins
+          // Archive report in Jenkins
           archiveArtifacts artifacts: reportFile, fingerprint: true
         } else {
           echo "No HTML report found"
@@ -60,17 +60,53 @@ pipeline {
           ? "${env.BUILD_URL}artifact/${env.REPORT_FILE}"
           : "No report generated"
 
-        // Upload HTML report to Slack using Web API (GUARANTEED)
+        // Upload HTML report to Slack using External Upload API
         if (env.REPORT_FILE) {
           withCredentials([string(credentialsId: 'slack-bot-token', variable: 'SLACK_TOKEN')]) {
-            sh """
-              curl -s -X POST https://slack.com/api/files.upload \\
-                -H "Authorization: Bearer $SLACK_TOKEN" \\
-                -F channels=#all-poc-k6 \\
-                -F title="k6 HTML Test Report" \\
-                -F filename="${env.REPORT_FILE}" \\
-                -F file=@${env.REPORT_FILE}
-            """
+            sh '''
+              set -e
+
+              FILE_NAME="${REPORT_FILE}"
+              FILE_SIZE=$(stat -c%s "$FILE_NAME")
+              CHANNEL_ID="C0ACKM8BR7G"
+
+              echo "Requesting Slack upload URL..."
+
+              RESPONSE=$(curl -s -X POST https://slack.com/api/files.getUploadURLExternal \
+                -H "Authorization: Bearer $SLACK_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \\"filename\\": \\"$FILE_NAME\\",
+                  \\"length\\": $FILE_SIZE
+                }")
+
+              echo "$RESPONSE"
+
+              UPLOAD_URL=$(echo "$RESPONSE" | jq -r '.upload_url')
+              FILE_ID=$(echo "$RESPONSE" | jq -r '.file_id')
+
+              if [ "$UPLOAD_URL" = "null" ] || [ "$FILE_ID" = "null" ]; then
+                echo "Slack failed to provide upload URL"
+                exit 1
+              fi
+
+              echo "Uploading file to Slack..."
+              curl -s -X PUT "$UPLOAD_URL" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary @"$FILE_NAME"
+
+              echo "Completing Slack upload..."
+              curl -s -X POST https://slack.com/api/files.completeUploadExternal \
+                -H "Authorization: Bearer $SLACK_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \\"files\\": [{
+                    \\"id\\": \\"$FILE_ID\\",
+                    \\"title\\": \\"k6 HTML Test Report\\"
+                  }],
+                  \\"channel_id\\": \\"$CHANNEL_ID\\"
+                }"
+            '''
           }
         }
 
@@ -82,7 +118,7 @@ pipeline {
 • Build: ${env.BUILD_NUMBER}
 • Jenkins Report Link: ${reportLink}
 
-ℹ️ The HTML report is uploaded above. Download and open it in a browser to see full colors & charts.
+ℹ️ The HTML report is uploaded above. Download it and open in a browser to see full colors & charts.
 """
         )
       }
