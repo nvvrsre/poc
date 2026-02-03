@@ -4,7 +4,7 @@ import { Trend, Counter, Rate } from "k6/metrics";
 import { htmlReport } from "https://raw.githubusercontent.com/benc-uk/k6-reporter/main/dist/bundle.js";
 import { textSummary } from "https://jslib.k6.io/k6-summary/0.0.1/index.js";
 
-// ðŸ”‘ IMPORTANT: rename imported options
+// í´‘ IMPORTANT: rename imported options
 import { options as baseOptions } from "./options.js";
 
 // âœ… CI-safe override (Option B)
