@@ -44,12 +44,10 @@ pipeline {
 
         if (reportFile) {
           echo "Found report: ${reportFile}"
+          env.REPORT_FILE = reportFile
 
           // Archive in Jenkins
           archiveArtifacts artifacts: reportFile, fingerprint: true
-
-          // Save for Slack steps
-          env.REPORT_FILE = reportFile
         } else {
           echo "No HTML report found"
         }
@@ -62,13 +60,18 @@ pipeline {
           ? "${env.BUILD_URL}artifact/${env.REPORT_FILE}"
           : "No report generated"
 
-        // Upload HTML report to Slack (DOWNLOADABLE)
+        // Upload HTML report to Slack using Web API (GUARANTEED)
         if (env.REPORT_FILE) {
-          slackUploadFile(
-            channel: "#all-poc-k6",
-            filePath: env.REPORT_FILE,
-            initialComment: "📊 k6 HTML Test Report (download & open in browser)"
-          )
+          withCredentials([string(credentialsId: 'SLACK_BOT_TOKEN', variable: 'SLACK_TOKEN')]) {
+            sh """
+              curl -s -X POST https://slack.com/api/files.upload \\
+                -H "Authorization: Bearer $SLACK_TOKEN" \\
+                -F channels=#all-poc-k6 \\
+                -F title="k6 HTML Test Report" \\
+                -F filename="${env.REPORT_FILE}" \\
+                -F file=@${env.REPORT_FILE}
+            """
+          }
         }
 
         // Slack summary message
@@ -79,7 +82,7 @@ pipeline {
 • Build: ${env.BUILD_NUMBER}
 • Jenkins Report Link: ${reportLink}
 
-ℹ️ Download the attached HTML file to view the full colored report.
+ℹ️ The HTML report is uploaded above. Download and open it in a browser to see full colors & charts.
 """
         )
       }
