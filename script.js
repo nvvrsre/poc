@@ -110,15 +110,18 @@ export default function () {
 }
 
 // ------------------------------------------------------------------
-// Summary & Benchmark Logic (RESTORED, RICH VERSION)
+// Summary & Benchmark Logic (unchanged logic, Option-B naming only)
 // ------------------------------------------------------------------
 export function handleSummary(data) {
+  const buildId = __ENV.BUILD_NUMBER || "local";
+
   const timestamp = new Date()
     .toISOString()
     .replace(/[:.]/g, "-")
     .slice(0, -5);
 
-  const reportName = `report_${timestamp}.html`;
+  // ✅ ONLY change: build-specific report name
+  const reportName = `report_${buildId}_${timestamp}.html`;
 
   const BENCHMARK_RPS_PER_API = 5;
   const API_COUNT = 5;
