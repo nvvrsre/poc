@@ -1,39 +1,28 @@
 pipeline {
   agent any
-
-  options {
-    timestamps()
-  }
+  options { timestamps() }
 
   environment {
     REPORT_FILE = ""
+    ZIP_FILE = ""
   }
 
   stages {
 
     stage('Checkout') {
-      steps {
-        checkout scm
-      }
-    }
-
-    stage('Verify k6') {
-      steps {
-        sh 'k6 version'
-      }
+      steps { checkout scm }
     }
 
     stage('Run k6 Test') {
       steps {
         sh '''
           set -e
-          echo "Running k6 load test..."
           k6 run script.js
         '''
       }
     }
 
-    stage('Collect Report') {
+    stage('Prepare Report') {
       steps {
         script {
           env.REPORT_FILE = sh(
@@ -41,42 +30,43 @@ pipeline {
             returnStdout: true
           ).trim()
 
-          echo "Latest report detected: ${env.REPORT_FILE}"
+          env.ZIP_FILE = env.REPORT_FILE.replace('.html', '.zip')
 
-          archiveArtifacts artifacts: env.REPORT_FILE, fingerprint: true
+          sh """
+            zip -j ${env.ZIP_FILE} ${env.REPORT_FILE}
+          """
+
+          archiveArtifacts artifacts: env.REPORT_FILE
+          archiveArtifacts artifacts: env.ZIP_FILE
         }
       }
     }
   }
 
   post {
-
     success {
       script {
-        def reportLink = "${env.BUILD_URL}artifact/${env.REPORT_FILE}"
+        withCredentials([string(credentialsId: 'slack-bot-token', variable: 'SLACK_TOKEN')]) {
+          sh """
+            curl -s -X POST https://slack.com/api/files.upload \
+              -H "Authorization: Bearer ${SLACK_TOKEN}" \
+              -F channels=#all-poc-k6 \
+              -F title="k6 HTML Report (ZIP)" \
+              -F file=@${ZIP_FILE}
+          """
+        }
 
         slackSend(
           channel: "#all-poc-k6",
           message: """✅ *k6 POC PASSED*
 • Job: ${env.JOB_NAME}
 • Build: ${env.BUILD_NUMBER}
-• Report: ${reportLink}
+• Jenkins HTML: ${env.BUILD_URL}artifact/${env.REPORT_FILE}
 
-ℹ️ Open the link in a browser to view the full colored HTML report.
+📎 Download the ZIP above → extract → open HTML in browser.
 """
         )
       }
-    }
-
-    failure {
-      slackSend(
-        channel: "#all-poc-k6",
-        message: """❌ *k6 POC FAILED*
-• Job: ${env.JOB_NAME}
-• Build: ${env.BUILD_NUMBER}
-• Logs: ${env.BUILD_URL}
-"""
-      )
     }
   }
 }
