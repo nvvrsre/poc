@@ -25,7 +25,7 @@ pipeline {
         sh '''
           set -e
           ls -l
-          k6 run script.js
+          k6 run Script.js
         '''
       }
     }
