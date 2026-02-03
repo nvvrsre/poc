@@ -7,7 +7,7 @@ pipeline {
   }
 
   environment {
-    REPORT_FILE = "report_build_${BUILD_NUMBER}.html"
+    REPORT_FILE = ""
   }
 
   stages {
@@ -29,6 +29,7 @@ pipeline {
         sh '''
           set -e
           echo "Running k6 load test..."
+          ls -l
           k6 run script.js
         '''
       }
@@ -37,12 +38,21 @@ pipeline {
     stage('Collect Report') {
       steps {
         script {
-          if (!fileExists(env.REPORT_FILE)) {
-            error "Report not found: ${env.REPORT_FILE}"
+          // Find the latest generated report
+          def reportFile = sh(
+            script: "ls -t report_*.html 2>/dev/null | head -n 1 || true",
+            returnStdout: true
+          ).trim()
+
+          if (!reportFile) {
+            error "No HTML report found"
           }
 
-          echo "Found report: ${env.REPORT_FILE}"
-          archiveArtifacts artifacts: env.REPORT_FILE, fingerprint: true
+          echo "Found report: ${reportFile}"
+          env.REPORT_FILE = reportFile
+
+          // Archive so Jenkins exposes it as an artifact
+          archiveArtifacts artifacts: reportFile, fingerprint: true
         }
       }
     }
@@ -51,15 +61,20 @@ pipeline {
   post {
 
     success {
-      slackSend(
-        channel: "#all-poc-k6",
-        message: """✅ *k6 POC PASSED*
+      script {
+        def reportUrl = "${env.BUILD_URL}artifact/${env.REPORT_FILE}"
+
+        slackSend(
+          channel: "#all-poc-k6",
+          message: """✅ *k6 POC PASSED*
 • Job: ${env.JOB_NAME}
 • Build: ${env.BUILD_NUMBER}
-• Report:
-${env.BUILD_URL}artifact/${env.REPORT_FILE}
+• Report URL: ${reportUrl}
+
+(Open the link to view the full HTML report with colors & charts)
 """
-      )
+        )
+      }
     }
 
     failure {
