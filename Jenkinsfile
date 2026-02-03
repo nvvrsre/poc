@@ -7,7 +7,7 @@ pipeline {
   }
 
   environment {
-    REPORT_FILE = ""
+    REPORT_FILE = "report_build_${BUILD_NUMBER}.html"
   }
 
   stages {
@@ -37,17 +37,12 @@ pipeline {
     stage('Collect Report') {
       steps {
         script {
-          // ✅ HARD GUARANTEE: fail build if report not found
-          def reportFile = sh(
-            script: 'ls -t report_*.html | head -n 1',
-            returnStdout: true
-          ).trim()
+          if (!fileExists(env.REPORT_FILE)) {
+            error "Report not found: ${env.REPORT_FILE}"
+          }
 
-          echo "Found report: ${reportFile}"
-
-          env.REPORT_FILE = reportFile
-
-          archiveArtifacts artifacts: reportFile, fingerprint: true
+          echo "Found report: ${env.REPORT_FILE}"
+          archiveArtifacts artifacts: env.REPORT_FILE, fingerprint: true
         }
       }
     }
@@ -56,20 +51,15 @@ pipeline {
   post {
 
     success {
-      script {
-        def reportLink = "${env.BUILD_URL}artifact/${env.REPORT_FILE}"
-
-        slackSend(
-          channel: "#all-poc-k6",
-          message: """✅ *k6 POC PASSED*
+      slackSend(
+        channel: "#all-poc-k6",
+        message: """✅ *k6 POC PASSED*
 • Job: ${env.JOB_NAME}
 • Build: ${env.BUILD_NUMBER}
-• 📊 Report: ${reportLink}
-
-⬆️ Click the link to open the full HTML report with colors & charts.
+• Report:
+${env.BUILD_URL}artifact/${env.REPORT_FILE}
 """
-        )
-      }
+      )
     }
 
     failure {
