@@ -5,6 +5,10 @@ pipeline {
     timestamps()
   }
 
+  environment {
+    REPORT_FILE = ""
+  }
+
   stages {
 
     stage('Checkout') {
@@ -21,62 +25,47 @@ pipeline {
 
     stage('Run k6 Test') {
       steps {
-        withEnv(["BUILD_NUMBER=${env.BUILD_NUMBER}"]) {
-          sh '''
-            set -e
-            k6 run script.js
-          '''
-        }
+        sh '''
+          set -e
+          echo "Running k6 load test..."
+          k6 run script.js
+        '''
       }
     }
 
-    stage('Collect & Upload Report') {
+    stage('Collect Report') {
       steps {
         script {
-          def reportFile = sh(
-            script: "ls -1 report_${env.BUILD_NUMBER}_*.html",
+          env.REPORT_FILE = sh(
+            script: "ls -1 report_*.html | sort | tail -n 1",
             returnStdout: true
           ).trim()
 
-          archiveArtifacts artifacts: reportFile, fingerprint: true
+          echo "Latest report detected: ${env.REPORT_FILE}"
 
-          withCredentials([string(credentialsId: 'slack-bot-token', variable: 'SLACK_TOKEN')]) {
-            sh """
-              FILE="${reportFile}"
-              SIZE=\$(stat -c%s "\$FILE")
-              CHANNEL="C0ACKM8BR7G"
-
-              RESP=\$(curl -s -X POST https://slack.com/api/files.getUploadURLExternal \\
-                -H "Authorization: Bearer \$SLACK_TOKEN" \\
-                -H "Content-Type: application/json; charset=utf-8" \\
-                --data "{\\"filename\\":\\"$FILE\\",\\"length\\":$SIZE}")
-
-              URL=\$(echo "\$RESP" | jq -r .upload_url)
-              ID=\$(echo "\$RESP" | jq -r .file_id)
-
-              curl -s -X PUT "\$URL" --data-binary @"\$FILE"
-              curl -s -X POST https://slack.com/api/files.completeUploadExternal \\
-                -H "Authorization: Bearer \$SLACK_TOKEN" \\
-                -H "Content-Type: application/json; charset=utf-8" \\
-                --data "{\\"files\\":[{\\"id\\":\\"\$ID\\",\\"title\\":\\"k6 HTML Report\\"}],\\"channel_id\\":\\"$CHANNEL\\"}"
-            """
-          }
+          archiveArtifacts artifacts: env.REPORT_FILE, fingerprint: true
         }
       }
     }
   }
 
   post {
+
     success {
-      slackSend(
-        channel: "#all-poc-k6",
-        message: """✅ *k6 POC PASSED*
+      script {
+        def reportLink = "${env.BUILD_URL}artifact/${env.REPORT_FILE}"
+
+        slackSend(
+          channel: "#all-poc-k6",
+          message: """✅ *k6 POC PASSED*
 • Job: ${env.JOB_NAME}
 • Build: ${env.BUILD_NUMBER}
+• Report: ${reportLink}
 
-📎 HTML report uploaded above — download & open in browser.
+ℹ️ Open the link in a browser to view the full colored HTML report.
 """
-      )
+        )
+      }
     }
 
     failure {
