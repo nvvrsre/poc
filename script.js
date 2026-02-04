@@ -4,10 +4,12 @@ import { Trend, Counter, Rate } from "k6/metrics";
 import { htmlReport } from "https://raw.githubusercontent.com/benc-uk/k6-reporter/main/dist/bundle.js";
 import { textSummary } from "https://jslib.k6.io/k6-summary/0.0.1/index.js";
 
-// 🔑 IMPORTANT: rename imported options
+// IMPORTANT: rename imported options (Option B)
 import { options as baseOptions } from "./options.js";
 
-// ✅ CI-safe override (Option B)
+// ------------------------------------------------------------------
+// CI-safe options override (do NOT touch options.js)
+// ------------------------------------------------------------------
 export const options = {
   ...baseOptions,
 
@@ -108,29 +110,68 @@ export default function () {
 }
 
 // ------------------------------------------------------------------
-// Summary & Benchmark Logic
+// Summary & Benchmark Logic (unchanged logic, Option-B naming only)
 // ------------------------------------------------------------------
 export function handleSummary(data) {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, -5);
-  const reportName = `report_${timestamp}.html`;
+  const buildId = __ENV.BUILD_NUMBER || "local";
+
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/[:.]/g, "-")
+    .slice(0, -5);
+
+  // ✅ ONLY change: build-specific report name
+  const reportName = `report_${buildId}_${timestamp}.html`;
 
   const BENCHMARK_RPS_PER_API = 5;
-  const totalBenchmarkRPS = BENCHMARK_RPS_PER_API * 5;
+  const API_COUNT = 5;
+
+  const totalBenchmarkRPS = BENCHMARK_RPS_PER_API * API_COUNT;
   const actualRPS = data.metrics.http_reqs?.values?.rate || 0;
+
   const benchmarkMet = actualRPS >= totalBenchmarkRPS;
 
+  const deltaPercent = benchmarkMet
+    ? (((actualRPS - totalBenchmarkRPS) / totalBenchmarkRPS) * 100).toFixed(2)
+    : (((totalBenchmarkRPS - actualRPS) / totalBenchmarkRPS) * 100).toFixed(2);
+
   const benchmarkHTML = `
-    <div style="margin:20px;padding:20px;border-radius:8px;
+    <div style="
+      margin:20px;
+      padding:20px;
+      border-radius:8px;
       background:${benchmarkMet ? "#d4edda" : "#f8d7da"};
-      border:2px solid ${benchmarkMet ? "#28a745" : "#dc3545"};">
-      <h2>${benchmarkMet ? "✓ TEST PASSED" : "✗ TEST FAILED"}</h2>
-      <p><b>Target:</b> ${totalBenchmarkRPS} RPS</p>
-      <p><b>Actual:</b> ${actualRPS.toFixed(2)} RPS</p>
+      border:2px solid ${benchmarkMet ? "#28a745" : "#dc3545"};
+      font-family: Arial, sans-serif;
+    ">
+      <h2 style="margin-top:0;">
+        ${benchmarkMet ? "✓ TEST PASSED" : "✗ TEST FAILED"}
+      </h2>
+
+      <p><b>Benchmark Target:</b> ${totalBenchmarkRPS} RPS</p>
+      <p><b>Actual Performance:</b> ${actualRPS.toFixed(2)} RPS</p>
+
+      <p>
+        <b>Delta:</b>
+        ${benchmarkMet ? "+" : "-"}${deltaPercent}% 
+        ${benchmarkMet ? "above" : "below"} benchmark
+      </p>
+
+      <p style="font-weight:bold;">
+        ${
+          benchmarkMet
+            ? `✓ Performance exceeds benchmark by ${deltaPercent}%`
+            : `⚠ Performance is ${deltaPercent}% below benchmark`
+        }
+      </p>
     </div>
   `;
 
   const standardReport = htmlReport(data);
-  const enhancedReport = standardReport.replace("<body>", `<body>${benchmarkHTML}`);
+  const enhancedReport = standardReport.replace(
+    "<body>",
+    `<body>${benchmarkHTML}`
+  );
 
   return {
     [reportName]: enhancedReport,
