@@ -29,7 +29,6 @@ pipeline {
         sh '''
           set -e
           echo "Running k6 load test..."
-          ls -l
           k6 run script.js
         '''
       }
@@ -38,21 +37,22 @@ pipeline {
     stage('Collect Report') {
       steps {
         script {
-          // Find the latest generated report
-          def reportFile = sh(
-            script: "ls -t report_*.html 2>/dev/null | head -n 1 || true",
+          REPORT_FILE = sh(
+            script: "ls -t report_*.html | head -n 1",
             returnStdout: true
           ).trim()
 
-          if (!reportFile) {
+          if (!REPORT_FILE) {
             error "No HTML report found"
           }
 
-          echo "Found report: ${reportFile}"
-          env.REPORT_FILE = reportFile
+          echo "Found report: ${REPORT_FILE}"
 
-          // Archive so Jenkins exposes it as an artifact
-          archiveArtifacts artifacts: reportFile, fingerprint: true
+          archiveArtifacts(
+            artifacts: REPORT_FILE,
+            fingerprint: true,
+            allowEmptyArchive: false
+          )
         }
       }
     }
@@ -62,16 +62,14 @@ pipeline {
 
     success {
       script {
-        def reportUrl = "${env.BUILD_URL}artifact/${env.REPORT_FILE}"
+        def reportUrl = "${env.BUILD_URL}artifact/${REPORT_FILE}"
 
         slackSend(
           channel: "#all-poc-k6",
           message: """✅ *k6 POC PASSED*
 • Job: ${env.JOB_NAME}
-• Build: ${env.BUILD_NUMBER}
-• Report URL: ${reportUrl}
-
-(Open the link to view the full HTML report with colors & charts)
+• Build: #${env.BUILD_NUMBER}
+• Report: ${reportUrl}
 """
         )
       }
@@ -82,7 +80,7 @@ pipeline {
         channel: "#all-poc-k6",
         message: """❌ *k6 POC FAILED*
 • Job: ${env.JOB_NAME}
-• Build: ${env.BUILD_NUMBER}
+• Build: #${env.BUILD_NUMBER}
 • Logs: ${env.BUILD_URL}
 """
       )
